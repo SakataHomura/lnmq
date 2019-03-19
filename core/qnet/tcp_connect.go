@@ -2,6 +2,7 @@ package qnet
 
 import (
 	"bufio"
+	"bytes"
 	"compress/flate"
 	"crypto/tls"
 	"net"
@@ -59,5 +60,25 @@ type TcpConnect struct {
 }
 
 func (c *TcpConnect) Start(handler ConnectHandler) {
+	//go pumpmessage
+	for  {
+		if c.HeartbeatInterval > 0 {
+			c.SetReadDeadline(time.Now().Add(c.HeartbeatInterval * 2))
+		}
 
+		line, err := c.Reader.ReadSlice('\n')
+		if err != nil {
+			break
+		}
+
+		line = line[:len(line) - 1]
+		if len(line) > 0 && line[len(line) - 1] == '\r' {
+			line = line [:len(line) - 1]
+		}
+		params := bytes.Split(line, []byte(" "))
+		//protocol
+		handler(params)
+
+
+	}
 }

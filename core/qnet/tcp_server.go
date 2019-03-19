@@ -6,7 +6,7 @@ import (
     "sync/atomic"
     "bufio"
 
-    "../config"
+    "../qconfig"
 
     "time"
 )
@@ -30,7 +30,7 @@ type TcpServer struct {
 }
 
 type ConnectHandler interface {
-    Handle()
+    Handle([][]byte)
 }
 
 func (server *TcpServer) Create() {
@@ -65,8 +65,8 @@ func (server *TcpServer) createConnect(conn net.Conn) *TcpConnect {
         Writer:bufio.NewWriterSize(conn, defaultBufferSize),
 
         OutputBufferSize:defaultBufferSize,
-        OutputBufferTimeout:config.GlobalConfig.OutputBufferTimeout,
-        MsgTimeout:config.GlobalConfig.MsgTimeout,
+        OutputBufferTimeout:qconfig.GlobalConfig.OutputBufferTimeout,
+        MsgTimeout:qconfig.GlobalConfig.MsgTimeout,
 
         ReadyStateChan:make(chan int32, 1),
         ExitChan:make(chan int32, 1),
@@ -76,7 +76,7 @@ func (server *TcpServer) createConnect(conn net.Conn) *TcpConnect {
         ClientId:addr,
         Hostname:addr,
 
-        HeartbeatInterval:config.GlobalConfig.ClientTimeout / 2,
+        HeartbeatInterval:qconfig.GlobalConfig.ClientTimeout / 2,
 
         pubCounts:make(map[string]int64),
     }
