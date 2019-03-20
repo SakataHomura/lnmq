@@ -6,7 +6,8 @@ type Config struct {
     OutputBufferTimeout time.Duration
     MsgTimeout    time.Duration
     ClientTimeout time.Duration
-
+    MaxMessageSize int32
+    MemQueueSize int32
 }
 
 var GlobalConfig Config

@@ -6,7 +6,7 @@ import (
     "sync/atomic"
     "bufio"
 
-    "../qconfig"
+    "github.com/lnmq/core/qconfig"
 
     "time"
 )

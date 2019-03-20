@@ -77,7 +77,7 @@ func (c *TcpConnect) Start(handler ConnectHandler) {
 		}
 		params := bytes.Split(line, []byte(" "))
 		//protocol
-		handler(params)
+		handler.Handle(params)
 
 
 	}
