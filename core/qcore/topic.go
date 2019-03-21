@@ -21,7 +21,7 @@ type Topic struct {
     //backend
     memoryMsgChan chan *Message
 
-    deleteCallback func(*Topic)
+    TopicDeleteCallback
     deleter sync.Once
 
     exitChan chan int32
@@ -32,6 +32,7 @@ func NewTopic(name string, cb TopicDeleteCallback) *Topic {
         name:name,
         channelMap:make(map[string]*Channel),
         memoryMsgChan:make(chan *Message, qconfig.GlobalConfig.MemQueueSize),
+        TopicDeleteCallback:cb,
     }
 
     //backend
@@ -67,8 +68,22 @@ func (t *Topic) Start() {
     }
 }
 
-func (t *Topic) Delete() {
+func (t *Topic) Delete()  {
 
+}
+
+func (t *Topic) DeleteChannel(name string) {
+    t.lock.Lock()
+    c, ok := t.channelMap[name]
+    if !ok {
+        t.lock.Unlock()
+        return
+    }
+
+    delete(t.channelMap, name)
+    t.lock.Unlock()
+
+    c.Delete()
 }
 
 func (t *Topic) PutMessage(m *Message) {
@@ -78,4 +93,25 @@ func (t *Topic) PutMessage(m *Message) {
 
     atomic.AddUint64(&t.messageCount, 1)
     atomic.AddUint64(&t.messageSize, uint64(len(m.Body)))
+}
+
+func (t *Topic) GetChannel(name string) *Channel {
+    t.lock.Lock()
+
+    c, ok := t.channelMap[name]
+    if ok {
+        t.lock.Unlock()
+        return c
+    }
+
+    c = NewChannel(t.name, name, t)
+    t.channelMap[name] = c
+
+    t.lock.Unlock()
+
+    return c
+}
+
+func (s *Topic) DeleteChannelCallback(channel *Channel) {
+
 }

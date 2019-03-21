@@ -8,10 +8,14 @@ import (
 	"net"
 	"sync"
 	"time"
+    "encoding/binary"
 )
 
 type TcpConnect struct {
 	net.Conn
+
+    ConnectDataHandler
+    MessageLooper
 
 	ReadyCount    int64
 	InFlightCount int64
@@ -43,6 +47,8 @@ type TcpConnect struct {
 	State       int32
 	ConnectTime time.Time
 	//Channel *Channel
+	TopicName string
+	ChannelName string
 	ReadyStateChan chan int32
 	ExitChan       chan int32
 
@@ -59,8 +65,9 @@ type TcpConnect struct {
 	Deflate int32
 }
 
-func (c *TcpConnect) Start(handler ConnectHandler) {
-	//go pumpmessage
+func (c *TcpConnect) Start() {
+	go c.MessageLoop(c)
+
 	for  {
 		if c.HeartbeatInterval > 0 {
 			c.SetReadDeadline(time.Now().Add(c.HeartbeatInterval * 2))
@@ -76,9 +83,50 @@ func (c *TcpConnect) Start(handler ConnectHandler) {
 			line = line [:len(line) - 1]
 		}
 		params := bytes.Split(line, []byte(" "))
-		//protocol
-		handler.Handle(params)
-
-
+        res, err := c.ConnectDataHandle(params, c)
+        if res != nil {
+            c.Send(res)
+        }
 	}
+}
+
+func (c *TcpConnect) Send (data []byte) (int, error) {
+    buf := [4]byte{}
+    size := uint32(len(data))
+    total := 0
+
+    binary.BigEndian.PutUint32(buf[:], size)
+    n, err := c.Writer.Write(buf[:])
+    total += n
+    if err != nil {
+        return total, nil
+    }
+
+    n, err = c.Writer.Write(data)
+    total += n
+    if err != nil {
+        return total, err
+    }
+
+    return total, nil
+}
+
+func (c *TcpConnect) UnPause() {
+
+}
+
+func (c *TcpConnect) Pause() {
+
+}
+
+func (c *TcpConnect) Close() error {
+    return nil
+}
+
+func (c *TcpConnect) TimedOutMessage() {
+
+}
+
+func (c *TcpConnect) Empty() {
+
 }

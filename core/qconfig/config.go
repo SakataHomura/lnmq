@@ -8,6 +8,8 @@ type Config struct {
     ClientTimeout time.Duration
     MaxMessageSize int32
     MemQueueSize int32
+
+    TCPAddress string
 }
 
 var GlobalConfig Config

@@ -22,7 +22,13 @@ func NewServer() *Server {
 		topicMap:make(map[string]*qcore.Topic),
 	}
 
+	s.tcpServer.Create()
+
 	return s
+}
+
+func (s *Server) Start()  {
+    s.tcpServer.Start()
 }
 
 func (s *Server) DeleteTopic(name string) {
@@ -65,4 +71,10 @@ func (s *Server) GetTopic(name string) *qcore.Topic {
 	t.Start()
 
 	return t
+}
+
+func (s *Server) GetChannel(topicName, chanName string) *qcore.Channel {
+    topic := s.GetTopic(topicName)
+
+     return topic.GetChannel(chanName)
 }

@@ -8,7 +8,7 @@ import (
 )
 
 type ChannelDeleteCallback interface {
-    Do(topic *Topic)
+    DeleteChannelCallback(channel *Channel)
 }
 
 type Channel struct {
@@ -19,12 +19,14 @@ type Channel struct {
     topicName string
     name string
 
-    memoryMsgChan chan *ChannelMsg
+    MemoryMsgChan chan *ChannelMsg
 
-    consumers map[int64]*Consumer
+    consumers map[uint64]Consumer
 
-    deleteCallback ChannelDeleteCallback
+    ChannelDeleteCallback
     deleter sync.Once
+
+    lock sync.Mutex
 }
 
 type ChannelMsg struct {
@@ -40,9 +42,9 @@ func NewChannel(topicName string, name string, callback ChannelDeleteCallback) *
     c := &Channel{
         topicName:topicName,
         name:name,
-        memoryMsgChan:make(chan *ChannelMsg, qconfig.GlobalConfig.MemQueueSize),
-        consumers:make(map[int64]*Consumer),
-        deleteCallback:callback,
+        MemoryMsgChan:make(chan *ChannelMsg, qconfig.GlobalConfig.MemQueueSize),
+        consumers:make(map[uint64]Consumer),
+        ChannelDeleteCallback:callback,
     }
 
     return c
@@ -59,7 +61,7 @@ func NewChannelMsg(msg *Message) *ChannelMsg {
 
 func (c *Channel) PutMessage(m *ChannelMsg) error {
     select {
-    case c.memoryMsgChan <- m:
+    case c.MemoryMsgChan <- m:
     }
 
     atomic.AddUint64(&c.messageCount, 1)
@@ -67,3 +69,17 @@ func (c *Channel) PutMessage(m *ChannelMsg) error {
     return nil
 }
 
+func (c *Channel) AddClient(clientId uint64, consumer Consumer) error {
+    c.lock.Lock()
+
+    //fusion
+    c.consumers[clientId] = consumer
+
+    c.lock.Unlock()
+
+    return nil
+}
+
+func (c *Channel) Delete() {
+
+}
