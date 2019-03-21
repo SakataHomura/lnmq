@@ -1,6 +1,11 @@
 package qprotocol
 
-import "io"
+import (
+    "github.com/lnmq/core/qapp"
+    "github.com/lnmq/core/qcore"
+    "github.com/lnmq/core/qutils"
+    "io"
+)
 import (
     "github.com/lnmq/core/qerror"
     "regexp"
@@ -29,7 +34,7 @@ func readLen(r io.Reader) (int32, error) {
     return int32(binary.BigEndian.Uint32(tmp)), nil
 }
 
-func HandleData(params [][]byte, reader *io.Reader) {
+func HandleData(params [][]byte, reader io.Reader) {
     switch params[0] {
     case []byte("FIN"):
     case []byte("RDY"):
@@ -72,5 +77,7 @@ func pub(params [][]byte, reader io.Reader) ([]byte, error) {
         return nil, qerror.MakeError(qerror.INVALID_MESSAGE, "PUB failed to read message")
     }
 
-
+    topic := qapp.Q_Server.GetTopic(topicName)
+    msg := qcore.NewMessage(qcore.NewMessageId(),msgBody)
+    topic.PutMessage(msg)
 }

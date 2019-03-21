@@ -3,11 +3,11 @@ package qcore
 import (
     "sync"
     "github.com/lnmq/core/qconfig"
-
+    "sync/atomic"
 )
 
 type TopicDeleteCallback interface {
-    Do(topic *Topic)
+    DeleteTopicCallback(topic *Topic)
 }
 
 type Topic struct {
@@ -65,4 +65,17 @@ func (t *Topic) Start() {
             }
         }
     }
+}
+
+func (t *Topic) Delete() {
+
+}
+
+func (t *Topic) PutMessage(m *Message) {
+    select {
+    case t.memoryMsgChan <- m:
+    }
+
+    atomic.AddUint64(&t.messageCount, 1)
+    atomic.AddUint64(&t.messageSize, uint64(len(m.Body)))
 }

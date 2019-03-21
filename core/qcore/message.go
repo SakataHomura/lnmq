@@ -1,6 +1,8 @@
 package qcore
 
 import (
+    "encoding/hex"
+    "github.com/lnmq/core/qutils"
     "time"
     "io"
     "encoding/binary"
@@ -19,6 +21,26 @@ type Message struct {
     Body []byte
     Timestamp int64
     Attempts uint16
+}
+
+func NewMessageId() MessageId {
+    id := qutils.NewGuid()
+
+    h := MessageId{}
+    b := [8]byte{}
+
+    b[0] = byte(id >> 56)
+    b[1] = byte(id >> 48)
+    b[2] = byte(id >> 40)
+    b[3] = byte(id >> 32)
+    b[4] = byte(id >> 24)
+    b[5] = byte(id >> 16)
+    b[6] = byte(id >> 8)
+    b[7] = byte(id)
+
+    hex.Encode(h[:], b[:])
+
+    return h
 }
 
 func NewMessage(id MessageId, body []byte) *Message {
