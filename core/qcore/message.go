@@ -7,6 +7,8 @@ import (
     "io"
     "encoding/binary"
     "fmt"
+    "bytes"
+    "unicode"
 )
 
 const (
@@ -92,4 +94,15 @@ func decodeMessage(b []byte) (*Message, error) {
     msg.Body = b[10+MsgIdLength:]
 
     return &msg, nil
+}
+
+func writeMessageToBackend(buf *bytes.Buffer, msg *Message, q BackendQueue) error {
+    buf.Reset()
+
+    _, err := msg.WriteTo(buf)
+    if err != nil {
+        return err
+    }
+
+    return q.Put(buf.Bytes())
 }

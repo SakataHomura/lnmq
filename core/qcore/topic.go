@@ -14,7 +14,7 @@ type Topic struct {
     messageCount uint64
     messageSize  uint64
 
-    lock sync.Mutex
+    mutex sync.Mutex
 
     name string
     channelMap map[string]*Channel
