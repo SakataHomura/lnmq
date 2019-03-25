@@ -1,13 +1,13 @@
 package qcore
 
 import (
-    "time"
-    "sync"
-    "github.com/lnmq/core/qconfig"
-    "sync/atomic"
-    "math"
-    "fmt"
     "container/heap"
+    "fmt"
+    "github.com/lnmq/core/qconfig"
+    "math"
+    "sync"
+    "sync/atomic"
+    "time"
 )
 
 type ChannelDeleteCallback interface {
@@ -28,7 +28,7 @@ type Channel struct {
     memoryMsgChan chan *ChannelMsg
 
     mutex sync.Mutex
-    consumers map[uint64]Consumer
+    consumers map[int64]Consumer
 
     ChannelDeleteCallback
     deleter sync.Once
@@ -54,7 +54,7 @@ func NewChannel(topicName string, name string, callback ChannelDeleteCallback) *
         topicName:topicName,
         name:name,
         memoryMsgChan:make(chan *ChannelMsg, qconfig.GlobalConfig.MemQueueSize),
-        consumers:make(map[uint64]Consumer),
+        consumers:make(map[int64]Consumer),
         ChannelDeleteCallback:callback,
     }
 
@@ -144,7 +144,36 @@ func (c *Channel) TouchMessage(clientId int64, id MessageId, timeout time.Durati
     return nil
 }
 
-func (c *Channel) AddClient(clientId uint64, consumer Consumer) error {
+func (c *Channel) FinishMessage(clientId int64, id MessageId)  {
+    msg, err := c.popInFlightMessage(clientId, id)
+    if err != nil {
+        return
+    }
+
+    c.removeFromFlightQ(msg)
+}
+
+func (c *Channel) RequeueMessage(clientId int64, id MessageId, timeout time.Duration) error {
+    msg, err := c.popInFlightMessage(clientId, id)
+    if err != nil {
+        return err
+    }
+
+    atomic.AddUint64(&c.requeueCount, 1)
+
+    if timeout == 0 {
+        if c.Exiting() {
+            return fmt.Errorf("exiting")
+        }
+
+        err = c.PutMessage(msg.Value.(*ChannelMsg))
+        return err
+    }
+
+    return c.StartDeferredTimeout(msg.Value.(*ChannelMsg), timeout)
+}
+
+func (c *Channel) AddClient(clientId int64, consumer Consumer) error {
     c.mutex.Lock()
 
     //fusion
@@ -153,6 +182,14 @@ func (c *Channel) AddClient(clientId uint64, consumer Consumer) error {
     c.mutex.Unlock()
 
     return nil
+}
+
+func (c *Channel) RemoveClient(clientId int64)  {
+    c.mutex.Lock()
+
+    delete(c.consumers, clientId)
+
+    c.mutex.Unlock()
 }
 
 func (c *Channel) Delete() {
@@ -295,6 +332,32 @@ func (c *Channel) StartInFlightTimeout(msg *ChannelMsg, clientId int64, timeout 
     return nil
 }
 
+func (c *Channel) popDeferredMessage(clientId int64, id MessageId) (*PriorityObject, error) {
+    c.deferredMutex.Lock()
+
+    o, ok := c.deferredMessages[id]
+    if !ok {
+        c.deferredMutex.Unlock()
+        return nil, fmt.Errorf("msg not exist")
+    }
+
+    msg := o.Value.(*ChannelMsg)
+    if msg.clientId != clientId {
+        c.deferredMutex.Unlock()
+        return nil, fmt.Errorf("msg not exist")
+    }
+
+    delete(c.deferredMessages, id)
+
+    if o.Index != -1 {
+        heap.Remove(&c.deferredQ, o.Index)
+    }
+
+    c.deferredMutex.Unlock()
+
+    return o, nil
+}
+
 func (c *Channel) popInFlightMessage(clientId int64, id MessageId) (*PriorityObject, error) {
     c.inFlightMutex.Lock()
 
@@ -319,4 +382,76 @@ func (c *Channel) popInFlightMessage(clientId int64, id MessageId) (*PriorityObj
     c.inFlightMutex.Unlock()
 
     return o, nil
+}
+
+func (c *Channel) removeFromFlightQ(msg *PriorityObject)  {
+    if msg.Index == -1 {
+        return
+    }
+
+    c.inFlightMutex.Lock()
+
+    heap.Remove(&c.inFlightQ, msg.Index)
+
+    c.inFlightMutex.Unlock()
+}
+
+func (c *Channel) processDeferredQueue(t int64) bool  {
+    if c.Exiting() {
+        return false
+    }
+
+    dirty := false
+    c.deferredMutex.Lock()
+    for  {
+        o, _ := c.deferredQ.PeekAndShift(t)
+        if o == nil {
+            break
+        }
+
+        dirty = true
+        msg := o.Value.(*ChannelMsg)
+        delete(c.deferredMessages, msg.Id)
+
+        c.PutMessage(msg)
+    }
+
+    c.deferredMutex.Unlock()
+
+    return dirty
+}
+
+func (c *Channel) processInFlightQueue(t int64) bool  {
+    if c.Exiting() {
+        return false
+    }
+
+    dirty := false
+    c.inFlightMutex.Lock()
+    for  {
+        o, _ := c.inFlightQ.PeekAndShift(t)
+        if o == nil {
+            break
+        }
+
+        dirty = true
+
+        msg := o.Value.(*ChannelMsg)
+        delete(c.inFlightMessages, msg.Id)
+
+        atomic.AddUint64(&c.timeoutCount, 1)
+
+        c.mutex.Lock()
+        consume, ok := c.consumers[msg.clientId]
+        c.mutex.Unlock()
+        if ok {
+            consume.TimedOutMessage()
+        }
+
+        c.PutMessage(msg)
+
+    }
+    c.inFlightMutex.Unlock()
+
+    return dirty
 }
