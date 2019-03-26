@@ -1,8 +1,8 @@
 package main
 
 import (
-    "github.com/lnmq/core/qapp"
-    "github.com/lnmq/core/qconfig"
+	"github.com/lnmq/core/qapp"
+	"github.com/lnmq/core/qconfig"
 )
 
 func main() {
@@ -13,5 +13,5 @@ func main() {
 }
 
 func initConfig() {
-    qconfig.Q_Config = qconfig.NewConfig()
+	qconfig.Q_Config = qconfig.NewConfig()
 }

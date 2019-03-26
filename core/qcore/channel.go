@@ -28,10 +28,10 @@ type Channel struct {
 
 	backend BackendQueue
 
-	memoryMsgChan chan *ChannelMsg
+	MemoryMsgChan chan *ChannelMsg
 
 	mutex     sync.Mutex
-	consumers map[int64]Consumer
+	consumers map[uint64]Consumer
 
 	ChannelDeleteCallback
 	deleter sync.Once
@@ -49,7 +49,7 @@ type ChannelMsg struct {
 	*Message
 
 	deliveryTs time.Time
-	clientId   int64
+	clientId   uint64
 }
 
 func NewChannelMsg(msg *Message) *ChannelMsg {
@@ -65,8 +65,8 @@ func NewChannel(topicName string, name string, callback ChannelDeleteCallback) *
 	c := &Channel{
 		topicName:             topicName,
         Name:                  name,
-		memoryMsgChan:         make(chan *ChannelMsg, qconfig.Q_Config.MemQueueSize),
-		consumers:             make(map[int64]Consumer),
+        MemoryMsgChan:         make(chan *ChannelMsg, qconfig.Q_Config.MemQueueSize),
+		consumers:             make(map[uint64]Consumer),
 		ChannelDeleteCallback: callback,
 		backend:&qbackend.EmptyBackendQueue{},
 	}
@@ -143,7 +143,7 @@ func (c *Channel) Empty() {
 		}
 
 		select {
-		case <-c.memoryMsgChan:
+		case <-c.MemoryMsgChan:
 		default:
 			isBreak = true
 		}
@@ -164,7 +164,7 @@ func (c *Channel) flush() {
 		}
 
 		select {
-		case msg := <-c.memoryMsgChan:
+		case msg := <-c.MemoryMsgChan:
 			writeMessageToBackend(buf, msg.Message, c.backend)
 		default:
 			isBreak = true
@@ -188,7 +188,7 @@ func (c *Channel) flush() {
 	PutBufferToPool(buf)
 }
 func (c *Channel) Depth() int64 {
-	return int64(len(c.memoryMsgChan)) + c.backend.Depth()
+	return int64(len(c.MemoryMsgChan)) + c.backend.Depth()
 }
 
 func (c *Channel) PutMessage(m *ChannelMsg) error {
@@ -197,7 +197,7 @@ func (c *Channel) PutMessage(m *ChannelMsg) error {
 	}
 
 	select {
-	case c.memoryMsgChan <- m:
+	case c.MemoryMsgChan <- m:
 	default:
 		buf := GetBufferFromPool()
 		writeMessageToBackend(buf, m.Message, c.backend)
@@ -215,7 +215,7 @@ func (c *Channel) PutDeferredMessage(m *ChannelMsg, timeout time.Duration) {
 	atomic.AddUint64(&c.messageCount, 1)
 }
 
-func (c *Channel) TouchMessage(clientId int64, id MessageId, timeout time.Duration) error {
+func (c *Channel) TouchMessage(clientId uint64, id MessageId, timeout time.Duration) error {
 	newTimeout := time.Now().Add(timeout)
 
 	c.inFlightMutex.Lock()
@@ -243,7 +243,7 @@ func (c *Channel) TouchMessage(clientId int64, id MessageId, timeout time.Durati
 	return nil
 }
 
-func (c *Channel) FinishMessage(clientId int64, id MessageId) {
+func (c *Channel) FinishMessage(clientId uint64, id MessageId) {
 	msg, err := c.popInFlightMessage(clientId, id)
 	if err != nil {
 		return
@@ -252,7 +252,7 @@ func (c *Channel) FinishMessage(clientId int64, id MessageId) {
 	c.removeFromFlightQ(msg)
 }
 
-func (c *Channel) RequeueMessage(clientId int64, id MessageId, timeout time.Duration) error {
+func (c *Channel) RequeueMessage(clientId uint64, id MessageId, timeout time.Duration) error {
 	msg, err := c.popInFlightMessage(clientId, id)
 	if err != nil {
 		return err
@@ -272,7 +272,7 @@ func (c *Channel) RequeueMessage(clientId int64, id MessageId, timeout time.Dura
 	return c.StartDeferredTimeout(msg.Value.(*ChannelMsg), timeout)
 }
 
-func (c *Channel) AddClient(clientId int64, consumer Consumer) error {
+func (c *Channel) AddClient(clientId uint64, consumer Consumer) error {
 	c.mutex.Lock()
 
 	//fusion
@@ -283,7 +283,7 @@ func (c *Channel) AddClient(clientId int64, consumer Consumer) error {
 	return nil
 }
 
-func (c *Channel) RemoveClient(clientId int64) {
+func (c *Channel) RemoveClient(clientId uint64) {
 	c.mutex.Lock()
 
 	delete(c.consumers, clientId)
@@ -339,7 +339,7 @@ func (c *Channel) StartDeferredTimeout(m *ChannelMsg, timeout time.Duration) err
 	return nil
 }
 
-func (c *Channel) popInFlightMessage(clientId int64, id MessageId) (*PriorityObject, error) {
+func (c *Channel) popInFlightMessage(clientId uint64, id MessageId) (*PriorityObject, error) {
 	c.inFlightMutex.Lock()
 
 	o, ok := c.inFlightMessages[id]
@@ -377,7 +377,7 @@ func (c *Channel) removeFromFlightQ(msg *PriorityObject) {
 	c.inFlightMutex.Unlock()
 }
 
-func (c *Channel) popDeferredMessage(clientId int64, id MessageId) (*PriorityObject, error) {
+func (c *Channel) popDeferredMessage(clientId uint64, id MessageId) (*PriorityObject, error) {
 	c.deferredMutex.Lock()
 
 	o, ok := c.deferredMessages[id]

@@ -4,6 +4,7 @@ import (
 	"github.com/lnmq/core/qcore"
 	"github.com/lnmq/core/qnet"
 	"sync"
+    "github.com/lnmq/core/qprotocol"
 )
 
 var Q_Server *Server
@@ -11,7 +12,7 @@ var Q_Server *Server
 type Server struct {
 	clientId int64
 
-	topicMap map[string]*qcore.Topic
+	topicMap  map[string]*qcore.Topic
 	tcpServer *qnet.TcpServer
 
 	rwMutex sync.RWMutex
@@ -19,16 +20,17 @@ type Server struct {
 
 func NewServer() *Server {
 	s := &Server{
-		topicMap:make(map[string]*qcore.Topic),
+		topicMap: make(map[string]*qcore.Topic),
 	}
 
-	s.tcpServer.Create()
+	p := qprotocol.Protocol{}
+	s.tcpServer = qnet.NewTcpServer(&p, &p)
 
 	return s
 }
 
-func (s *Server) Start()  {
-    s.tcpServer.Start()
+func (s *Server) Start() {
+	s.tcpServer.Start()
 }
 
 func (s *Server) DeleteTopic(name string) {
@@ -45,20 +47,20 @@ func (s *Server) DeleteTopic(name string) {
 	t.Delete()
 }
 
-func (s *Server) DeleteTopicCallback(topic *qcore.Topic)() {
-    s.rwMutex.Lock()
+func (s *Server) DeleteTopicCallback(topic *qcore.Topic) {
+	s.rwMutex.Lock()
 
-    t, ok := s.topicMap[topic.Name]
-    if !ok {
-        s.rwMutex.Unlock()
-        return
-    }
+	t, ok := s.topicMap[topic.Name]
+	if !ok {
+		s.rwMutex.Unlock()
+		return
+	}
 
-    delete(s.topicMap, topic.Name)
+	delete(s.topicMap, topic.Name)
 
-    s.rwMutex.Unlock()
+	s.rwMutex.Unlock()
 
-    t.Delete()
+	t.Delete()
 }
 
 func (s *Server) GetTopic(name string) *qcore.Topic {
@@ -86,7 +88,7 @@ func (s *Server) GetTopic(name string) *qcore.Topic {
 }
 
 func (s *Server) GetChannel(topicName, chanName string) *qcore.Channel {
-    topic := s.GetTopic(topicName)
+	topic := s.GetTopic(topicName)
 
-     return topic.GetOrCreateChannel(chanName)
+	return topic.GetOrCreateChannel(chanName)
 }

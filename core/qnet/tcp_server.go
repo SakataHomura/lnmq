@@ -27,7 +27,7 @@ type TcpServer struct {
     MessageLooper
 
     clientIdSequence uint64
-    connectMgr ConnectMgr
+    connectMgr *ConnectMgr
 }
 
 type ConnectDataHandler interface {
@@ -38,13 +38,23 @@ type MessageLooper interface {
     MessageLoop(conn *TcpConnect)
 }
 
-func (server *TcpServer) Create() {
+func NewTcpServer(handler ConnectDataHandler, looper MessageLooper) *TcpServer {
+
+    s := &TcpServer{
+        ConnectDataHandler:handler,
+        MessageLooper:looper,
+        connectMgr:&ConnectMgr{},
+    }
+
     var err error
-    server.listener, err = net.Listen("tcp", qconfig.Q_Config.TCPAddress)
+    s.listener, err = net.Listen("tcp", qconfig.Q_Config.TCPAddress)
     if err != nil {
 
     }
+
+    return s
 }
+
 
 func (server *TcpServer) Start() {
     for {
