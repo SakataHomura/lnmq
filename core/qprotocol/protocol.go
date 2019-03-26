@@ -3,14 +3,17 @@ package qprotocol
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/lnmq/core/qconfig"
 	"github.com/lnmq/core/qcore"
 	"github.com/lnmq/core/qerror"
 	"github.com/lnmq/core/qnet"
+	"github.com/lnmq/core/qutils"
 	"io"
 	"regexp"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 var okBytes = []byte("OK")
@@ -174,4 +177,46 @@ func (p *Protocol) sub(params [][]byte, connect *qnet.TcpConnect) ([]byte, error
 	atomic.StoreInt32(&connect.State, qnet.StateSubscribed)
 
 	return okBytes, nil
+}
+
+
+func (p *Protocol) req(params [][]byte, connect *qnet.TcpConnect) ([]byte, error) {
+	state := atomic.LoadInt32(&connect.State)
+	if state != qnet.StateSubscribed && state != qnet.StateClosing {
+		 return nil, qerror.MakeError(qerror.INVALID, "REQ connect state invalid")
+	}
+
+	if len(params) < 3 {
+		return nil, qerror.MakeError(qerror.INVALID_PARAMETER, "REQ insufficient number of parameters")
+	}
+
+	id, err := getMessageId(params[1])
+	if err != nil {
+		return nil, err
+	}
+
+	timeUs, err := qutils.Byte2Int64(params[2])
+	if err != nil {
+		return nil, err
+	}
+
+	timeDu := time.Duration(timeUs) * time.Millisecond
+
+	maxReqTimeout := qconfig.Q_Config.MaxReqTimeout
+
+	if timeDu < 0 {
+		timeDu = 0
+	} else if timeDu > maxReqTimeout {
+		timeDu = maxReqTimeout
+	}
+
+	err = p.server.GetTopic()
+}
+
+func getMessageId(b []byte) (*qcore.MessageId, error) {
+	if len(b) != qcore.MsgIdLength {
+		return nil, fmt.Errorf("invalid msgid")
+	}
+
+	return (*qcore.MessageId)(unsafe.Pointer(&b[0])), nil
 }
