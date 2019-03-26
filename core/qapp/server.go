@@ -3,8 +3,8 @@ package qapp
 import (
 	"github.com/lnmq/core/qcore"
 	"github.com/lnmq/core/qnet"
+	"github.com/lnmq/core/qprotocol"
 	"sync"
-    "github.com/lnmq/core/qprotocol"
 )
 
 var Q_Server *Server

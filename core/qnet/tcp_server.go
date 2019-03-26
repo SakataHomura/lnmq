@@ -1,107 +1,106 @@
 package qnet
 
 import (
-    "net"
-    "runtime"
-    "sync/atomic"
-    "bufio"
+	"bufio"
+	"net"
+	"runtime"
+	"sync/atomic"
 
-    "github.com/lnmq/core/qconfig"
+	"github.com/lnmq/core/qconfig"
 
-    "time"
+	"time"
 )
 
 const defaultBufferSize = 16 * 1024
 
 const (
-    StateInit = iota
-    StateDisconnected
-    StateConnected
-    StateSubscribed
-    StateClosing
+	StateInit = iota
+	StateDisconnected
+	StateConnected
+	StateSubscribed
+	StateClosing
 )
 
 type TcpServer struct {
-    listener net.Listener
-    ConnectDataHandler
-    MessageLooper
+	listener net.Listener
+	ConnectDataHandler
+	MessageLooper
 
-    clientIdSequence uint64
-    connectMgr *ConnectMgr
+	clientIdSequence uint64
+	connectMgr       *ConnectMgr
 }
 
 type ConnectDataHandler interface {
-    ConnectDataHandle([][]byte, *TcpConnect) ([]byte, error)
+	ConnectDataHandle([][]byte, *TcpConnect) ([]byte, error)
 }
 
 type MessageLooper interface {
-    MessageLoop(conn *TcpConnect)
+	MessageLoop(conn *TcpConnect)
 }
 
 func NewTcpServer(handler ConnectDataHandler, looper MessageLooper) *TcpServer {
 
-    s := &TcpServer{
-        ConnectDataHandler:handler,
-        MessageLooper:looper,
-        connectMgr:&ConnectMgr{},
-    }
+	s := &TcpServer{
+		ConnectDataHandler: handler,
+		MessageLooper:      looper,
+		connectMgr:         &ConnectMgr{},
+	}
 
-    var err error
-    s.listener, err = net.Listen("tcp", qconfig.Q_Config.TCPAddress)
-    if err != nil {
+	var err error
+	s.listener, err = net.Listen("tcp", qconfig.Q_Config.TCPAddress)
+	if err != nil {
 
-    }
+	}
 
-    return s
+	return s
 }
 
-
 func (server *TcpServer) Start() {
-    for {
-       conn, err := server.listener.Accept()
-        if err != nil {
-            if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
-                runtime.Gosched()
-                continue
-            }
+	for {
+		conn, err := server.listener.Accept()
+		if err != nil {
+			if nerr, ok := err.(net.Error); ok && nerr.Temporary() {
+				runtime.Gosched()
+				continue
+			}
 
-            break
-        } else {
-            c := server.createConnect(conn)
-            server.connectMgr.AddConnect(c)
+			break
+		} else {
+			c := server.createConnect(conn)
+			server.connectMgr.AddConnect(c)
 
-            go c.Start()
-        }
-    }
+			go c.Start()
+		}
+	}
 }
 
 func (server *TcpServer) createConnect(conn net.Conn) *TcpConnect {
-    addr, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
-    id := atomic.AddUint64(&server.clientIdSequence, 1)
-    c := &TcpConnect{
-        Id:id,
-        ConnectDataHandler:server,
-        MessageLooper:server,
-        Conn:conn,
-        Reader:bufio.NewReaderSize(conn, defaultBufferSize),
-        Writer:bufio.NewWriterSize(conn, defaultBufferSize),
+	addr, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+	id := atomic.AddUint64(&server.clientIdSequence, 1)
+	c := &TcpConnect{
+		Id:                 id,
+		ConnectDataHandler: server,
+		MessageLooper:      server,
+		Conn:               conn,
+		Reader:             bufio.NewReaderSize(conn, defaultBufferSize),
+		Writer:             bufio.NewWriterSize(conn, defaultBufferSize),
 
-        OutputBufferSize:defaultBufferSize,
-        OutputBufferTimeout:qconfig.Q_Config.OutputBufferTimeout,
-        MsgTimeout:qconfig.Q_Config.MsgTimeout,
+		OutputBufferSize:    defaultBufferSize,
+		OutputBufferTimeout: qconfig.Q_Config.OutputBufferTimeout,
+		MsgTimeout:          qconfig.Q_Config.MsgTimeout,
 
-        ReadyStateChan:make(chan int32, 1),
-        ExitChan:make(chan int32, 1),
-        ConnectTime:time.Now(),
-        State:StateInit,
+		ReadyStateChan: make(chan int32, 1),
+		ExitChan:       make(chan int32, 1),
+		ConnectTime:    time.Now(),
+		State:          StateInit,
 
-        ClientId:addr,
-        Hostname:addr,
+		ClientId: addr,
+		Hostname: addr,
 
-        HeartbeatInterval:qconfig.Q_Config.ClientTimeout / 2,
+		HeartbeatInterval: qconfig.Q_Config.ClientTimeout / 2,
 
-        pubCounts:make(map[string]int64),
-    }
+		pubCounts: make(map[string]int64),
+	}
 
-    return c
+	return c
 }

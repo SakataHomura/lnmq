@@ -3,12 +3,12 @@ package qcore
 import (
 	"container/heap"
 	"fmt"
+	"github.com/lnmq/core/qbackend"
 	"github.com/lnmq/core/qconfig"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
-    "github.com/lnmq/core/qbackend"
 )
 
 type ChannelDeleteCallback interface {
@@ -23,8 +23,6 @@ type Channel struct {
 	topicName string
 	Name      string
 	exitFlag  int32
-
-
 
 	backend BackendQueue
 
@@ -64,11 +62,11 @@ func NewChannelMsg(msg *Message) *ChannelMsg {
 func NewChannel(topicName string, name string, callback ChannelDeleteCallback) *Channel {
 	c := &Channel{
 		topicName:             topicName,
-        Name:                  name,
-        MemoryMsgChan:         make(chan *ChannelMsg, qconfig.Q_Config.MemQueueSize),
+		Name:                  name,
+		MemoryMsgChan:         make(chan *ChannelMsg, qconfig.Q_Config.MemQueueSize),
 		consumers:             make(map[uint64]Consumer),
 		ChannelDeleteCallback: callback,
-		backend:&qbackend.EmptyBackendQueue{},
+		backend:               &qbackend.EmptyBackendQueue{},
 	}
 
 	c.initQ()
