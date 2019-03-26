@@ -8,7 +8,6 @@ import (
     "encoding/binary"
     "fmt"
     "bytes"
-    "unicode"
 )
 
 const (
@@ -26,7 +25,7 @@ type Message struct {
 }
 
 func NewMessageId() MessageId {
-    id := qutils.NewGuid()
+    id := qutils.IdGenerater.NewGuid()
 
     h := MessageId{}
     b := [8]byte{}

@@ -40,7 +40,7 @@ type MessageLooper interface {
 
 func (server *TcpServer) Create() {
     var err error
-    server.listener, err = net.Listen("tcp", qconfig.GlobalConfig.TCPAddress)
+    server.listener, err = net.Listen("tcp", qconfig.Q_Config.TCPAddress)
     if err != nil {
 
     }
@@ -77,8 +77,8 @@ func (server *TcpServer) createConnect(conn net.Conn) *TcpConnect {
         Writer:bufio.NewWriterSize(conn, defaultBufferSize),
 
         OutputBufferSize:defaultBufferSize,
-        OutputBufferTimeout:qconfig.GlobalConfig.OutputBufferTimeout,
-        MsgTimeout:qconfig.GlobalConfig.MsgTimeout,
+        OutputBufferTimeout:qconfig.Q_Config.OutputBufferTimeout,
+        MsgTimeout:qconfig.Q_Config.MsgTimeout,
 
         ReadyStateChan:make(chan int32, 1),
         ExitChan:make(chan int32, 1),
@@ -88,7 +88,7 @@ func (server *TcpServer) createConnect(conn net.Conn) *TcpConnect {
         ClientId:addr,
         Hostname:addr,
 
-        HeartbeatInterval:qconfig.GlobalConfig.ClientTimeout / 2,
+        HeartbeatInterval:qconfig.Q_Config.ClientTimeout / 2,
 
         pubCounts:make(map[string]int64),
     }

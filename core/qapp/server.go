@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-var Q_Server Server
+var Q_Server *Server
 
 type Server struct {
 	clientId int64
@@ -14,7 +14,7 @@ type Server struct {
 	topicMap map[string]*qcore.Topic
 	tcpServer *qnet.TcpServer
 
-	lock sync.RWMutex
+	rwMutex sync.RWMutex
 }
 
 func NewServer() *Server {
@@ -32,41 +32,53 @@ func (s *Server) Start()  {
 }
 
 func (s *Server) DeleteTopic(name string) {
-	s.lock.Lock()
+	s.rwMutex.Lock()
 	t, ok := s.topicMap[name]
 	if !ok {
-		s.lock.Unlock()
+		s.rwMutex.Unlock()
 		return
 	}
 
 	delete(s.topicMap, name)
-	s.lock.Unlock()
+	s.rwMutex.Unlock()
 
 	t.Delete()
 }
 
 func (s *Server) DeleteTopicCallback(topic *qcore.Topic)() {
+    s.rwMutex.Lock()
 
+    t, ok := s.topicMap[topic.Name]
+    if !ok {
+        s.rwMutex.Unlock()
+        return
+    }
+
+    delete(s.topicMap, topic.Name)
+
+    s.rwMutex.Unlock()
+
+    t.Delete()
 }
 
 func (s *Server) GetTopic(name string) *qcore.Topic {
-	s.lock.RLock()
+	s.rwMutex.RLock()
 	t, ok := s.topicMap[name]
-	s.lock.RUnlock()
+	s.rwMutex.RUnlock()
 	if ok {
 		return t
 	}
 
-	s.lock.Lock()
+	s.rwMutex.Lock()
 	t, ok = s.topicMap[name]
 	if ok {
-		s.lock.Unlock()
+		s.rwMutex.Unlock()
 		return t
 	}
 
 	t = qcore.NewTopic(name, s)
 	s.topicMap[name] = t
-	s.lock.Unlock()
+	s.rwMutex.Unlock()
 
 	t.Start()
 
@@ -76,5 +88,5 @@ func (s *Server) GetTopic(name string) *qcore.Topic {
 func (s *Server) GetChannel(topicName, chanName string) *qcore.Channel {
     topic := s.GetTopic(topicName)
 
-     return topic.GetChannel(chanName)
+     return topic.GetOrCreateChannel(chanName)
 }

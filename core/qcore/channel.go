@@ -1,457 +1,464 @@
 package qcore
 
 import (
-    "container/heap"
-    "fmt"
-    "github.com/lnmq/core/qconfig"
-    "math"
-    "sync"
-    "sync/atomic"
-    "time"
+	"container/heap"
+	"fmt"
+	"github.com/lnmq/core/qconfig"
+	"math"
+	"sync"
+	"sync/atomic"
+	"time"
+    "github.com/lnmq/core/qbackend"
 )
 
 type ChannelDeleteCallback interface {
-    DeleteChannelCallback(channel *Channel)
+	DeleteChannelCallback(channel *Channel)
 }
 
 type Channel struct {
-    requeueCount uint64
-    messageCount uint64
-    timeoutCount uint64
+	requeueCount uint64
+	messageCount uint64
+	timeoutCount uint64
 
-    topicName string
-    name string
-    exitFlag int32
+	topicName string
+	Name      string
+	exitFlag  int32
 
-    backend BackendQueue
 
-    memoryMsgChan chan *ChannelMsg
 
-    mutex sync.Mutex
-    consumers map[int64]Consumer
+	backend BackendQueue
 
-    ChannelDeleteCallback
-    deleter sync.Once
+	memoryMsgChan chan *ChannelMsg
 
-    deferredMutex sync.Mutex
-    deferredMessages map[MessageId]*PriorityObject
-    deferredQ PriorityQueue
+	mutex     sync.Mutex
+	consumers map[int64]Consumer
 
-    inFlightMutex sync.Mutex
-    inFlightMessages map[MessageId]*PriorityObject
-    inFlightQ PriorityQueue
+	ChannelDeleteCallback
+	deleter sync.Once
+
+	deferredMutex    sync.Mutex
+	deferredMessages map[MessageId]*PriorityObject
+	deferredQ        PriorityQueue
+
+	inFlightMutex    sync.Mutex
+	inFlightMessages map[MessageId]*PriorityObject
+	inFlightQ        PriorityQueue
 }
 
 type ChannelMsg struct {
-    *Message
+	*Message
 
-    deliveryTs time.Time
-    clientId int64
-}
-
-func NewChannel(topicName string, name string, callback ChannelDeleteCallback) *Channel {
-    c := &Channel{
-        topicName:topicName,
-        name:name,
-        memoryMsgChan:make(chan *ChannelMsg, qconfig.GlobalConfig.MemQueueSize),
-        consumers:make(map[int64]Consumer),
-        ChannelDeleteCallback:callback,
-    }
-
-    c.initQ()
-
-    //notify
-
-    return c
-}
-
-func (c *Channel) initQ()  {
-    qSize := int(math.Max(1, float64(qconfig.GlobalConfig.MemQueueSize / 10)))
-
-    c.inFlightMutex.Lock()
-    c.inFlightMessages = make(map[MessageId]*PriorityObject)
-    c.inFlightQ = NewPriorityQueue(qSize)
-    c.inFlightMutex.Unlock()
-
-    c.deferredMutex.Lock()
-    c.deferredMessages = make(map[MessageId]*PriorityObject)
-    c.deferredQ = NewPriorityQueue(qSize)
-    c.deferredMutex.Unlock()
-}
-
-func (c *Channel) Exiting() bool {
-    return atomic.LoadInt32(&c.exitFlag) == 1
+	deliveryTs time.Time
+	clientId   int64
 }
 
 func NewChannelMsg(msg *Message) *ChannelMsg {
-    c := &ChannelMsg{}
+	c := &ChannelMsg{}
 
-    c.Message = msg
-    c.Timestamp = msg.Timestamp
+	c.Message = msg
+	c.Timestamp = msg.Timestamp
 
-    return c
+	return c
 }
 
-func (c *Channel) PutMessage(m *ChannelMsg) error {
-    if c.Exiting() {
-        return fmt.Errorf("exiting")
-    }
+func NewChannel(topicName string, name string, callback ChannelDeleteCallback) *Channel {
+	c := &Channel{
+		topicName:             topicName,
+        Name:                  name,
+		memoryMsgChan:         make(chan *ChannelMsg, qconfig.Q_Config.MemQueueSize),
+		consumers:             make(map[int64]Consumer),
+		ChannelDeleteCallback: callback,
+		backend:&qbackend.EmptyBackendQueue{},
+	}
 
-    select {
-    case c.memoryMsgChan <- m:
-    default:
-        buf := GetBufferFromPool()
-        writeMessageToBackend(buf, m.Message, c.backend)
-        PutBufferToPool(buf)
-    }
+	c.initQ()
 
-    atomic.AddUint64(&c.messageCount, 1)
+	//notify
 
-    return nil
+	return c
 }
 
-func (c *Channel) PutDeferredMessage(m *ChannelMsg, timeout time.Duration)  {
-    c.StartDeferredTimeout(m, timeout)
+func (c *Channel) initQ() {
+	qSize := int(math.Max(1, float64(qconfig.Q_Config.MemQueueSize/10)))
 
-    atomic.AddUint64(&c.messageCount, 1)
+	c.inFlightMutex.Lock()
+	c.inFlightMessages = make(map[MessageId]*PriorityObject)
+	c.inFlightQ = NewPriorityQueue(qSize)
+	c.inFlightMutex.Unlock()
+
+	c.deferredMutex.Lock()
+	c.deferredMessages = make(map[MessageId]*PriorityObject)
+	c.deferredQ = NewPriorityQueue(qSize)
+	c.deferredMutex.Unlock()
 }
 
-func (c *Channel) TouchMessage(clientId int64, id MessageId, timeout time.Duration) error {
-    newTimeout := time.Now().Add(timeout)
-
-    c.inFlightMutex.Lock()
-
-    o, ok := c.inFlightMessages[id]
-    if !ok {
-        c.inFlightMutex.Unlock()
-        return fmt.Errorf("no data")
-    }
-
-    msg := o.Value.(*ChannelMsg)
-    if msg.clientId != clientId {
-        c.inFlightMutex.Unlock()
-        return fmt.Errorf("no data")
-    }
-
-    heap.Remove(&c.inFlightQ, o.Index)
-
-    o.Priority = newTimeout.UnixNano()
-
-    heap.Push(&c.inFlightQ, o.Index)
-
-    c.inFlightMutex.Unlock()
-
-    return nil
-}
-
-func (c *Channel) FinishMessage(clientId int64, id MessageId)  {
-    msg, err := c.popInFlightMessage(clientId, id)
-    if err != nil {
-        return
-    }
-
-    c.removeFromFlightQ(msg)
-}
-
-func (c *Channel) RequeueMessage(clientId int64, id MessageId, timeout time.Duration) error {
-    msg, err := c.popInFlightMessage(clientId, id)
-    if err != nil {
-        return err
-    }
-
-    atomic.AddUint64(&c.requeueCount, 1)
-
-    if timeout == 0 {
-        if c.Exiting() {
-            return fmt.Errorf("exiting")
-        }
-
-        err = c.PutMessage(msg.Value.(*ChannelMsg))
-        return err
-    }
-
-    return c.StartDeferredTimeout(msg.Value.(*ChannelMsg), timeout)
-}
-
-func (c *Channel) AddClient(clientId int64, consumer Consumer) error {
-    c.mutex.Lock()
-
-    //fusion
-    c.consumers[clientId] = consumer
-
-    c.mutex.Unlock()
-
-    return nil
-}
-
-func (c *Channel) RemoveClient(clientId int64)  {
-    c.mutex.Lock()
-
-    delete(c.consumers, clientId)
-
-    c.mutex.Unlock()
+func (c *Channel) Exiting() bool {
+	return atomic.LoadInt32(&c.exitFlag) == 1
 }
 
 func (c *Channel) Delete() {
-
+	c.exit(true)
 }
 
-func (c *Channel) exit(deleted bool)  {
-    if !atomic.CompareAndSwapInt32(&c.exitFlag, 0, 1) {
-        return
-    }
+func (c *Channel) Close() {
+	c.exit(false)
+}
 
-    if deleted {
-        //notify
-    }
+func (c *Channel) exit(deleted bool) {
+	if !atomic.CompareAndSwapInt32(&c.exitFlag, 0, 1) {
+		return
+	}
 
-    c.mutex.Lock()
-    for _, v := range c.consumers {
-        v.Close()
-    }
-    c.mutex.Unlock()
+	if deleted {
+		//notify
+	}
 
-    if deleted {
-        c.Empty()
-        c.backend.Delete()
-    } else {
-        c.flush()
-        c.backend.Close()
-    }
+	c.mutex.Lock()
+	for _, v := range c.consumers {
+		v.Close()
+	}
+	c.mutex.Unlock()
+
+	if deleted {
+		c.Empty()
+		c.backend.Delete()
+	} else {
+		c.flush()
+		c.backend.Close()
+	}
 }
 
 func (c *Channel) Empty() {
-    c.mutex.Lock()
+	c.mutex.Lock()
 
-    c.initQ()
-    for _, v := range c.consumers{
-        v.Empty()
-    }
+	c.initQ()
+	for _, v := range c.consumers {
+		v.Empty()
+	}
 
-    isBreak := false
-    for {
-        if isBreak {
-            break
-        }
+	isBreak := false
+	for {
+		if isBreak {
+			break
+		}
 
-        select {
-       case <- c.memoryMsgChan:
-        default:
-            isBreak = true
-       }
-    }
+		select {
+		case <-c.memoryMsgChan:
+		default:
+			isBreak = true
+		}
+	}
 
-    c.mutex.Unlock()
+	c.mutex.Unlock()
 
-    c.backend.Empty()
+	c.backend.Empty()
 }
 
-func (c *Channel) flush()  {
-    buf := GetBufferFromPool()
+func (c *Channel) flush() {
+	buf := GetBufferFromPool()
 
-    isBreak := false
-    for  {
-        if isBreak {
-            break
-        }
+	isBreak := false
+	for {
+		if isBreak {
+			break
+		}
 
-        select {
-        case msg := <- c.memoryMsgChan:
-            writeMessageToBackend(buf, msg.Message, c.backend)
-        default:
-            isBreak = true
-        }
-    }
+		select {
+		case msg := <-c.memoryMsgChan:
+			writeMessageToBackend(buf, msg.Message, c.backend)
+		default:
+			isBreak = true
+		}
+	}
 
-    c.inFlightMutex.Lock()
-    for _, o := range c.inFlightMessages {
-        msg := o.Value.(*ChannelMsg)
-        writeMessageToBackend(buf, msg.Message, c.backend)
-    }
-    c.inFlightMutex.Unlock()
+	c.inFlightMutex.Lock()
+	for _, o := range c.inFlightMessages {
+		msg := o.Value.(*ChannelMsg)
+		writeMessageToBackend(buf, msg.Message, c.backend)
+	}
+	c.inFlightMutex.Unlock()
 
-    c.deferredMutex.Lock()
-    for _, o := range c.deferredMessages  {
-        msg := o.Value.(*ChannelMsg)
-        writeMessageToBackend(buf, msg.Message, c.backend)
-    }
-    c.deferredMutex.Unlock()
+	c.deferredMutex.Lock()
+	for _, o := range c.deferredMessages {
+		msg := o.Value.(*ChannelMsg)
+		writeMessageToBackend(buf, msg.Message, c.backend)
+	}
+	c.deferredMutex.Unlock()
 
-    PutBufferToPool(buf)
+	PutBufferToPool(buf)
 }
-
 func (c *Channel) Depth() int64 {
-    return int64(len(c.memoryMsgChan)) + c.backend.Depth()
+	return int64(len(c.memoryMsgChan)) + c.backend.Depth()
 }
 
-func (c *Channel) StartDeferredTimeout(m *ChannelMsg, timeout time.Duration) error  {
-    ts := time.Now().Add(timeout).UnixNano()
-    o := &PriorityObject{
-        Value:m,
-        Priority:ts,
-    }
+func (c *Channel) PutMessage(m *ChannelMsg) error {
+	if c.Exiting() {
+		return fmt.Errorf("exiting")
+	}
 
-    c.deferredMutex.Lock()
+	select {
+	case c.memoryMsgChan <- m:
+	default:
+		buf := GetBufferFromPool()
+		writeMessageToBackend(buf, m.Message, c.backend)
+		PutBufferToPool(buf)
+	}
 
-    id := o.Value.(*ChannelMsg).Id
-    _, ok := c.deferredMessages[id]
-    if ok {
-        c.deferredMutex.Unlock()
-        return nil
-    }
+	atomic.AddUint64(&c.messageCount, 1)
 
-    c.deferredMessages[id] = o
-    heap.Push(&c.deferredQ, o)
+	return nil
+}
 
-    c.deferredMutex.Unlock()
+func (c *Channel) PutDeferredMessage(m *ChannelMsg, timeout time.Duration) {
+	c.StartDeferredTimeout(m, timeout)
 
-    return nil
+	atomic.AddUint64(&c.messageCount, 1)
+}
+
+func (c *Channel) TouchMessage(clientId int64, id MessageId, timeout time.Duration) error {
+	newTimeout := time.Now().Add(timeout)
+
+	c.inFlightMutex.Lock()
+
+	o, ok := c.inFlightMessages[id]
+	if !ok {
+		c.inFlightMutex.Unlock()
+		return fmt.Errorf("no data")
+	}
+
+	msg := o.Value.(*ChannelMsg)
+	if msg.clientId != clientId {
+		c.inFlightMutex.Unlock()
+		return fmt.Errorf("no data")
+	}
+
+	heap.Remove(&c.inFlightQ, o.Index)
+
+	o.Priority = newTimeout.UnixNano()
+
+	heap.Push(&c.inFlightQ, o.Index)
+
+	c.inFlightMutex.Unlock()
+
+	return nil
+}
+
+func (c *Channel) FinishMessage(clientId int64, id MessageId) {
+	msg, err := c.popInFlightMessage(clientId, id)
+	if err != nil {
+		return
+	}
+
+	c.removeFromFlightQ(msg)
+}
+
+func (c *Channel) RequeueMessage(clientId int64, id MessageId, timeout time.Duration) error {
+	msg, err := c.popInFlightMessage(clientId, id)
+	if err != nil {
+		return err
+	}
+
+	atomic.AddUint64(&c.requeueCount, 1)
+
+	if timeout == 0 {
+		if c.Exiting() {
+			return fmt.Errorf("exiting")
+		}
+
+		err = c.PutMessage(msg.Value.(*ChannelMsg))
+		return err
+	}
+
+	return c.StartDeferredTimeout(msg.Value.(*ChannelMsg), timeout)
+}
+
+func (c *Channel) AddClient(clientId int64, consumer Consumer) error {
+	c.mutex.Lock()
+
+	//fusion
+	c.consumers[clientId] = consumer
+
+	c.mutex.Unlock()
+
+	return nil
+}
+
+func (c *Channel) RemoveClient(clientId int64) {
+	c.mutex.Lock()
+
+	delete(c.consumers, clientId)
+
+	c.mutex.Unlock()
 }
 
 func (c *Channel) StartInFlightTimeout(msg *ChannelMsg, clientId int64, timeout time.Duration) error {
-    now := time.Now()
-    msg.deliveryTs = now
-    o := &PriorityObject{
-        Value:msg,
-        Priority:now.Add(timeout).UnixNano(),
-    }
+	now := time.Now()
+	msg.deliveryTs = now
+	o := &PriorityObject{
+		Value:    msg,
+		Priority: now.Add(timeout).UnixNano(),
+	}
 
-    c.inFlightMutex.Lock()
+	c.inFlightMutex.Lock()
 
-    _, ok := c.inFlightMessages[msg.Id]
-    if ok {
-       c.inFlightMutex.Unlock()
-       return fmt.Errorf("msg exist")
-    }
+	_, ok := c.inFlightMessages[msg.Id]
+	if ok {
+		c.inFlightMutex.Unlock()
+		return fmt.Errorf("msg exist")
+	}
 
-    c.inFlightMessages[msg.Id] = o
-    heap.Push(&c.inFlightQ, o)
+	c.inFlightMessages[msg.Id] = o
+	heap.Push(&c.inFlightQ, o)
 
-    c.inFlightMutex.Unlock()
+	c.inFlightMutex.Unlock()
 
-    return nil
+	return nil
 }
 
-func (c *Channel) popDeferredMessage(clientId int64, id MessageId) (*PriorityObject, error) {
-    c.deferredMutex.Lock()
+func (c *Channel) StartDeferredTimeout(m *ChannelMsg, timeout time.Duration) error {
+	ts := time.Now().Add(timeout).UnixNano()
+	o := &PriorityObject{
+		Value:    m,
+		Priority: ts,
+	}
 
-    o, ok := c.deferredMessages[id]
-    if !ok {
-        c.deferredMutex.Unlock()
-        return nil, fmt.Errorf("msg not exist")
-    }
+	c.deferredMutex.Lock()
 
-    msg := o.Value.(*ChannelMsg)
-    if msg.clientId != clientId {
-        c.deferredMutex.Unlock()
-        return nil, fmt.Errorf("msg not exist")
-    }
+	id := o.Value.(*ChannelMsg).Id
+	_, ok := c.deferredMessages[id]
+	if ok {
+		c.deferredMutex.Unlock()
+		return nil
+	}
 
-    delete(c.deferredMessages, id)
+	c.deferredMessages[id] = o
+	heap.Push(&c.deferredQ, o)
 
-    if o.Index != -1 {
-        heap.Remove(&c.deferredQ, o.Index)
-    }
+	c.deferredMutex.Unlock()
 
-    c.deferredMutex.Unlock()
-
-    return o, nil
+	return nil
 }
 
 func (c *Channel) popInFlightMessage(clientId int64, id MessageId) (*PriorityObject, error) {
-    c.inFlightMutex.Lock()
+	c.inFlightMutex.Lock()
 
-    o, ok := c.inFlightMessages[id]
-    if !ok {
-        c.inFlightMutex.Unlock()
-        return nil, fmt.Errorf("msg exist")
-    }
+	o, ok := c.inFlightMessages[id]
+	if !ok {
+		c.inFlightMutex.Unlock()
+		return nil, fmt.Errorf("msg exist")
+	}
 
-    msg := o.Value.(*ChannelMsg)
-    if msg.clientId != clientId {
-        c.inFlightMutex.Unlock()
-        return nil, fmt.Errorf("msg exist")
-    }
+	msg := o.Value.(*ChannelMsg)
+	if msg.clientId != clientId {
+		c.inFlightMutex.Unlock()
+		return nil, fmt.Errorf("msg exist")
+	}
 
-    delete(c.inFlightMessages, id)
+	delete(c.inFlightMessages, id)
 
-    if o.Index != -1 {
-        heap.Remove(&c.inFlightQ, o.Index)
-    }
+	if o.Index != -1 {
+		heap.Remove(&c.inFlightQ, o.Index)
+	}
 
-    c.inFlightMutex.Unlock()
+	c.inFlightMutex.Unlock()
 
-    return o, nil
+	return o, nil
 }
 
-func (c *Channel) removeFromFlightQ(msg *PriorityObject)  {
-    if msg.Index == -1 {
-        return
-    }
+func (c *Channel) removeFromFlightQ(msg *PriorityObject) {
+	if msg.Index == -1 {
+		return
+	}
 
-    c.inFlightMutex.Lock()
+	c.inFlightMutex.Lock()
 
-    heap.Remove(&c.inFlightQ, msg.Index)
+	heap.Remove(&c.inFlightQ, msg.Index)
 
-    c.inFlightMutex.Unlock()
+	c.inFlightMutex.Unlock()
 }
 
-func (c *Channel) processDeferredQueue(t int64) bool  {
-    if c.Exiting() {
-        return false
-    }
+func (c *Channel) popDeferredMessage(clientId int64, id MessageId) (*PriorityObject, error) {
+	c.deferredMutex.Lock()
 
-    dirty := false
-    c.deferredMutex.Lock()
-    for  {
-        o, _ := c.deferredQ.PeekAndShift(t)
-        if o == nil {
-            break
-        }
+	o, ok := c.deferredMessages[id]
+	if !ok {
+		c.deferredMutex.Unlock()
+		return nil, fmt.Errorf("msg not exist")
+	}
 
-        dirty = true
-        msg := o.Value.(*ChannelMsg)
-        delete(c.deferredMessages, msg.Id)
+	msg := o.Value.(*ChannelMsg)
+	if msg.clientId != clientId {
+		c.deferredMutex.Unlock()
+		return nil, fmt.Errorf("msg not exist")
+	}
 
-        c.PutMessage(msg)
-    }
+	delete(c.deferredMessages, id)
 
-    c.deferredMutex.Unlock()
+	if o.Index != -1 {
+		heap.Remove(&c.deferredQ, o.Index)
+	}
 
-    return dirty
+	c.deferredMutex.Unlock()
+
+	return o, nil
 }
 
-func (c *Channel) processInFlightQueue(t int64) bool  {
-    if c.Exiting() {
-        return false
-    }
+func (c *Channel) processDeferredQueue(t int64) bool {
+	if c.Exiting() {
+		return false
+	}
 
-    dirty := false
-    c.inFlightMutex.Lock()
-    for  {
-        o, _ := c.inFlightQ.PeekAndShift(t)
-        if o == nil {
-            break
-        }
+	dirty := false
+	c.deferredMutex.Lock()
+	for {
+		o, _ := c.deferredQ.PeekAndShift(t)
+		if o == nil {
+			break
+		}
 
-        dirty = true
+		dirty = true
+		msg := o.Value.(*ChannelMsg)
+		delete(c.deferredMessages, msg.Id)
 
-        msg := o.Value.(*ChannelMsg)
-        delete(c.inFlightMessages, msg.Id)
+		c.PutMessage(msg)
+	}
 
-        atomic.AddUint64(&c.timeoutCount, 1)
+	c.deferredMutex.Unlock()
 
-        c.mutex.Lock()
-        consume, ok := c.consumers[msg.clientId]
-        c.mutex.Unlock()
-        if ok {
-            consume.TimedOutMessage()
-        }
+	return dirty
+}
 
-        c.PutMessage(msg)
+func (c *Channel) processInFlightQueue(t int64) bool {
+	if c.Exiting() {
+		return false
+	}
 
-    }
-    c.inFlightMutex.Unlock()
+	dirty := false
+	c.inFlightMutex.Lock()
+	for {
+		o, _ := c.inFlightQ.PeekAndShift(t)
+		if o == nil {
+			break
+		}
 
-    return dirty
+		dirty = true
+
+		msg := o.Value.(*ChannelMsg)
+		delete(c.inFlightMessages, msg.Id)
+
+		atomic.AddUint64(&c.timeoutCount, 1)
+
+		c.mutex.Lock()
+		consume, ok := c.consumers[msg.clientId]
+		c.mutex.Unlock()
+		if ok {
+			consume.TimedOutMessage()
+		}
+
+		c.PutMessage(msg)
+
+	}
+	c.inFlightMutex.Unlock()
+
+	return dirty
 }
