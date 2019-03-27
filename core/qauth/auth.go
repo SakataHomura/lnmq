@@ -2,6 +2,7 @@ package qauth
 
 import (
     "fmt"
+    "github.com/lnmq/core/qhttp"
     "net/url"
     "regexp"
     "time"
@@ -101,9 +102,13 @@ func QueryAuthd(authd string, remoteIp string, tlsEnabled bool, commonName strin
     v.Set("secret", authSecret)
     v.Set("common_name", commonName)
 
-    //endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
+    endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
 
     var as AuthState
+    client := qhttp.NewHttpClient(nil, connectTimeout, requestTimeout)
+    if err:= qhttp.GetV1(client, endpoint, &as); err != nil {
+        return nil, err
+    }
 
     for _, auth := range as.Auths {
         for _, p := range auth.Permissions {
