@@ -67,6 +67,7 @@ func (server *TcpServer) Start() {
 			break
 		} else {
 			c := server.createConnect(conn)
+			c.connectMgr = server.connectMgr
 			server.connectMgr.AddConnect(c)
 
 			go c.Start()

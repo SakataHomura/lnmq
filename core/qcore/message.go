@@ -22,6 +22,7 @@ type Message struct {
 	Body      []byte
 	Timestamp int64
 	Attempts  uint16
+	Deferred time.Duration
 }
 
 func NewMessageId() MessageId {
@@ -44,7 +45,8 @@ func NewMessageId() MessageId {
 	return h
 }
 
-func NewMessage(id MessageId, body []byte) *Message {
+func NewMessage(body []byte) *Message {
+    id := NewMessageId()
 	return &Message{
 		Id:        id,
 		Body:      body,

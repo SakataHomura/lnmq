@@ -1,11 +1,11 @@
 package qcore
 
 import (
-	"fmt"
-	"github.com/lnmq/core/qbackend"
-	"github.com/lnmq/core/qconfig"
-	"sync"
-	"sync/atomic"
+    "fmt"
+    "github.com/lnmq/core/qbackend"
+    "github.com/lnmq/core/qconfig"
+    "sync"
+    "sync/atomic"
 )
 
 type TopicDeleteCallback interface {
@@ -172,11 +172,15 @@ func (t *Topic) messagePump() {
 
 		for _, v := range chans {
 			cMsg := NewChannelMsg(msg)
+            if cMsg.deferred > 0 {
+                v.PutDeferredMessage(cMsg)
+            } else {
+                err := v.PutMessage(cMsg)
+                if err != nil {
 
-			err := v.PutMessage(cMsg)
-			if err != nil {
+                }
+            }
 
-			}
 		}
 	}
 }

@@ -207,8 +207,8 @@ func (c *Channel) PutMessage(m *ChannelMsg) error {
 	return nil
 }
 
-func (c *Channel) PutDeferredMessage(m *ChannelMsg, timeout time.Duration) {
-	c.StartDeferredTimeout(m, timeout)
+func (c *Channel) PutDeferredMessage(m *ChannelMsg) {
+	c.StartDeferredTimeout(m)
 
 	atomic.AddUint64(&c.messageCount, 1)
 }
@@ -241,17 +241,19 @@ func (c *Channel) TouchMessage(clientId uint64, id MessageId, timeout time.Durat
 	return nil
 }
 
-func (c *Channel) FinishMessage(clientId uint64, id MessageId) {
+func (c *Channel) FinishMessage(clientId uint64, id MessageId) error {
 	msg, err := c.popInFlightMessage(clientId, id)
 	if err != nil {
-		return
+		return err
 	}
 
 	c.removeFromFlightQ(msg)
+
+	return nil
 }
 
 func (c *Channel) RequeueMessage(clientId uint64, id MessageId, timeout time.Duration) error {
-	msg, err := c.popInFlightMessage(clientId, id)
+	o, err := c.popInFlightMessage(clientId, id)
 	if err != nil {
 		return err
 	}
@@ -263,11 +265,14 @@ func (c *Channel) RequeueMessage(clientId uint64, id MessageId, timeout time.Dur
 			return fmt.Errorf("exiting")
 		}
 
-		err = c.PutMessage(msg.Value.(*ChannelMsg))
+		err = c.PutMessage(o.Value.(*ChannelMsg))
 		return err
 	}
 
-	return c.StartDeferredTimeout(msg.Value.(*ChannelMsg), timeout)
+	msg := o.Value.(*ChannelMsg)
+	msg.Deferred = timeout
+
+	return c.StartDeferredTimeout(msg)
 }
 
 func (c *Channel) AddClient(clientId uint64, consumer Consumer) error {
@@ -313,8 +318,8 @@ func (c *Channel) StartInFlightTimeout(msg *ChannelMsg, clientId int64, timeout 
 	return nil
 }
 
-func (c *Channel) StartDeferredTimeout(m *ChannelMsg, timeout time.Duration) error {
-	ts := time.Now().Add(timeout).UnixNano()
+func (c *Channel) StartDeferredTimeout(m *ChannelMsg) error {
+	ts := time.Now().Add(m.Deferred).UnixNano()
 	o := &PriorityObject{
 		Value:    m,
 		Priority: ts,
