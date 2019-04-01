@@ -13,7 +13,7 @@ type Config struct {
 
 	TCPAddress string
 
-	AuthHttpAddresses []string
+	AuthHttpAddresses        []string
 	HttpClientConnectTimeout time.Duration
 	HttpClientRequestTimeout time.Duration
 }
@@ -24,7 +24,7 @@ func NewConfig() *Config {
 		MsgTimeout:          60 * time.Second,
 		ClientTimeout:       60 * time.Second,
 		MaxMessageSize:      1024 * 1024,
-        MaxBodySize:         5 * 1024 * 1024,
+		MaxBodySize:         5 * 1024 * 1024,
 		MemQueueSize:        10000,
 		TCPAddress:          "127.0.0.1:8100",
 	}

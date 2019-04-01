@@ -1,9 +1,8 @@
-package qapp
+package qmqd
 
 import (
-	"github.com/lnmq/core/qcore"
-	"github.com/lnmq/core/qnet"
-	"github.com/lnmq/core/qprotocol"
+	"github.com/lnmq/qcore/qcore"
+	"github.com/lnmq/qcore/qnet"
 	"sync"
 )
 
@@ -23,7 +22,7 @@ func NewServer() *Server {
 		topicMap: make(map[string]*qcore.Topic),
 	}
 
-	p := qprotocol.NewProtocol(s)
+	p := NewProtocol(s)
 	s.tcpServer = qnet.NewTcpServer(p, p)
 
 	return s

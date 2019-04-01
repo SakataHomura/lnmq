@@ -15,15 +15,15 @@ import (
 
 func NewDeadlineTransport(connectTimeout time.Duration, requestTimeout time.Duration) *http.Transport {
 	t := &http.Transport{
-		DialContext:(&net.Dialer{
-				Timeout:connectTimeout,
-				KeepAlive:30 * time.Second,
-				DualStack:true,
-			}).DialContext,
-			ResponseHeaderTimeout:requestTimeout,
-			MaxIdleConns:100,
-			IdleConnTimeout:90 * time.Second,
-			TLSHandshakeTimeout:10 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout:   connectTimeout,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		ResponseHeaderTimeout: requestTimeout,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
 	}
 
 	return t
@@ -34,13 +34,13 @@ func NewHttpClient(tlsConfig *tls.Config, connectTimeout time.Duration, requestT
 	t.TLSClientConfig = tlsConfig
 
 	return &http.Client{
-		Transport:t,
-		Timeout:requestTimeout,
+		Transport: t,
+		Timeout:   requestTimeout,
 	}
 }
 
 func GetV1(client *http.Client, endpoint string, v interface{}) error {
-	for  {
+	for {
 		req, err := http.NewRequest("GET", endpoint, nil)
 		if err != nil {
 			return err
@@ -55,7 +55,7 @@ func GetV1(client *http.Client, endpoint string, v interface{}) error {
 
 		body, err := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
-		if err != nil  {
+		if err != nil {
 			return err
 		}
 

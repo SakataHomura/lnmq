@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/lnmq/core/qutils"
+	"github.com/lnmq/qcore/qutils"
 	"io"
 	"time"
 )
@@ -22,7 +22,7 @@ type Message struct {
 	Body      []byte
 	Timestamp int64
 	Attempts  uint16
-	Deferred time.Duration
+	Deferred  time.Duration
 }
 
 func NewMessageId() MessageId {
@@ -46,7 +46,7 @@ func NewMessageId() MessageId {
 }
 
 func NewMessage(body []byte) *Message {
-    id := NewMessageId()
+	id := NewMessageId()
 	return &Message{
 		Id:        id,
 		Body:      body,

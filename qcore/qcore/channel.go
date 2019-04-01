@@ -3,8 +3,8 @@ package qcore
 import (
 	"container/heap"
 	"fmt"
-	"github.com/lnmq/core/qbackend"
-	"github.com/lnmq/core/qconfig"
+	"github.com/lnmq/qcore/qbackend"
+	"github.com/lnmq/qcore/qconfig"
 	"math"
 	"sync"
 	"sync/atomic"
