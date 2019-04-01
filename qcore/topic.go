@@ -2,8 +2,8 @@ package qcore
 
 import (
 	"fmt"
-	"github.com/lnmq/qcore/qbackend"
-	"github.com/lnmq/qcore/qconfig"
+	"github.com/lnmq/qbackend"
+	"github.com/lnmq/qconfig"
 	"sync"
 	"sync/atomic"
 )

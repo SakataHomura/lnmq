@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/lnmq/qcore/qutils"
+	"github.com/lnmq/qutils"
 	"io"
 	"time"
 )

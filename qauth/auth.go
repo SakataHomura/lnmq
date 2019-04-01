@@ -2,7 +2,7 @@ package qauth
 
 import (
 	"fmt"
-	"github.com/lnmq/qcore/qhttp"
+	"github.com/lnmq/qhttp"
 	"net/url"
 	"regexp"
 	"time"

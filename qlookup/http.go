@@ -3,9 +3,9 @@ package qlookup
 import (
     "fmt"
     "github.com/julienschmidt/httprouter"
-    "github.com/lnmq/qcore/qcore"
-    "github.com/lnmq/qcore/qhttp"
-    "github.com/lnmq/qcore/qversion"
+    "github.com/lnmq/qcore"
+    "github.com/lnmq/qhttp"
+    "github.com/lnmq/qversion"
 	"net/http"
 )
 

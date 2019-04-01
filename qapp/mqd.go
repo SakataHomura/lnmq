@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/lnmq/qcore/qconfig"
-	"github.com/lnmq/qcore/qmqd"
+	"github.com/lnmq/qconfig"
+    "github.com/lnmq/qmqd"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"sync/atomic"
 
-	"github.com/lnmq/qcore/qconfig"
+	"github.com/lnmq/qconfig"
 
 	"time"
 )

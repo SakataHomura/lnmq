@@ -1,8 +1,8 @@
 package qmqd
 
 import (
-	"github.com/lnmq/qcore/qcore"
-	"github.com/lnmq/qcore/qnet"
+	"github.com/lnmq/qcore"
+	"github.com/lnmq/qnet"
 	"sync"
 )
 
