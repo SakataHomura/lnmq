@@ -85,7 +85,9 @@ func (s *LookupServer) AddProducer(key LookupKey, p *Producer) {
 	s.mutex.Unlock()
 }
 
-func (s *LookupServer) RemoveProducer(key LookupKey, id string) {
+func (s *LookupServer) RemoveProducer(key LookupKey, id string) int {
+	ret := 0
+
 	s.mutex.Lock()
 
 	for {
@@ -95,10 +97,13 @@ func (s *LookupServer) RemoveProducer(key LookupKey, id string) {
 		}
 
 		delete(ps, id)
+		ret = len(ps)
 		break
 	}
 
 	s.mutex.Unlock()
+
+	return ret
 }
 
 func (s *LookupServer) RemoveLookup(key LookupKey) {

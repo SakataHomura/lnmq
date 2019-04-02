@@ -1,4 +1,4 @@
-package qconfig
+package qmqd
 
 import "time"
 

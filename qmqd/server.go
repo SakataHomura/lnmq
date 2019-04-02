@@ -22,8 +22,7 @@ func NewServer() *Server {
 		topicMap: make(map[string]*qcore.Topic),
 	}
 
-	p := NewProtocol(s)
-	s.tcpServer = qnet.NewTcpServer(p, p)
+	s.tcpServer = qnet.NewTcpServer(createTcpClient)
 
 	return s
 }

@@ -2,14 +2,14 @@ package main
 
 import (
 	"github.com/lnmq/qconfig"
-    "github.com/lnmq/qmqd"
+	"github.com/lnmq/qmqd"
 )
 
 func main() {
 	initConfig()
 
-    qmqd.Q_Server = qmqd.NewServer()
-    qmqd.Q_Server.Start()
+	qmqd.Q_Server = qmqd.NewServer()
+	qmqd.Q_Server.Start()
 }
 
 func initConfig() {

@@ -7,8 +7,6 @@ import (
 	"sync/atomic"
 
 	"github.com/lnmq/qconfig"
-
-	"time"
 )
 
 const defaultBufferSize = 16 * 1024
@@ -22,28 +20,23 @@ const (
 )
 
 type TcpServer struct {
-	listener net.Listener
-	ConnectDataHandler
-	MessageLooper
+	listener       net.Listener
+	HandlerCreator func(*TcpConnect) ConnectHandler
 
 	clientIdSequence uint64
 	connectMgr       *ConnectMgr
 }
 
-type ConnectDataHandler interface {
-	ConnectDataHandle([][]byte, *TcpConnect) ([]byte, error)
+type ConnectHandler interface {
+	ConnectDataHandler([][]byte) ([]byte, error)
+	MessageLoop()
+	CloseHandler()
 }
 
-type MessageLooper interface {
-	MessageLoop(conn *TcpConnect)
-}
-
-func NewTcpServer(handler ConnectDataHandler, looper MessageLooper) *TcpServer {
-
+func NewTcpServer(f func(*TcpConnect) ConnectHandler) *TcpServer {
 	s := &TcpServer{
-		ConnectDataHandler: handler,
-		MessageLooper:      looper,
-		connectMgr:         &ConnectMgr{},
+		HandlerCreator: f,
+		connectMgr:     &ConnectMgr{},
 	}
 
 	var err error
@@ -79,29 +72,22 @@ func (server *TcpServer) createConnect(conn net.Conn) *TcpConnect {
 	addr, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 	id := atomic.AddUint64(&server.clientIdSequence, 1)
 	c := &TcpConnect{
-		Id:                 id,
-		ConnectDataHandler: server,
-		MessageLooper:      server,
-		Conn:               conn,
-		Reader:             bufio.NewReaderSize(conn, defaultBufferSize),
-		Writer:             bufio.NewWriterSize(conn, defaultBufferSize),
+		Id:     id,
+		Conn:   conn,
+		Reader: bufio.NewReaderSize(conn, defaultBufferSize),
+		Writer: bufio.NewWriterSize(conn, defaultBufferSize),
 
 		OutputBufferSize:    defaultBufferSize,
 		OutputBufferTimeout: qconfig.Q_Config.OutputBufferTimeout,
 		MsgTimeout:          qconfig.Q_Config.MsgTimeout,
 
-		ReadyStateChan: make(chan int32, 1),
-		ExitChan:       make(chan int32, 1),
-		ConnectTime:    time.Now(),
-		State:          StateInit,
-
 		ClientId: addr,
 		Hostname: addr,
 
 		HeartbeatInterval: qconfig.Q_Config.ClientTimeout / 2,
-
-		pubCounts: make(map[string]int64),
 	}
+
+	c.ConnectHandler = server.HandlerCreator(c)
 
 	return c
 }
