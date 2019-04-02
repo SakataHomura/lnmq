@@ -1,15 +1,23 @@
 package qlookup
 
-type Config struct {
-	MaxMessageSize int32
+import "github.com/lnmq/qconfig"
 
-	TcpAddress       string
-	HttpAddress      string
-	BroadcastAddress string
+type Config struct {
+    Base qconfig.Config
+
+	MaxMessageSize int32
 }
 
 func NewConfig() *Config {
-	return &Config{}
+	c := &Config{
+	    Base:qconfig.Config{
+
+        },
+    }
+
+	qconfig.Q_Config = &c.Base
+
+	return c
 }
 
 var Q_Config *Config

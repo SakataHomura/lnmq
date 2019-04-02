@@ -1,17 +1,16 @@
 package qmqd
 
-import "time"
+import (
+    "github.com/lnmq/qconfig"
+    "time"
+)
 
 type Config struct {
-	OutputBufferTimeout time.Duration
-	MsgTimeout          time.Duration
-	ClientTimeout       time.Duration
+    Base qconfig.Config
+
 	MaxReqTimeout       time.Duration
 	MaxMessageSize      int32
 	MaxBodySize         int32
-	MemQueueSize        int32
-
-	TCPAddress string
 
 	AuthHttpAddresses        []string
 	HttpClientConnectTimeout time.Duration
@@ -19,15 +18,21 @@ type Config struct {
 }
 
 func NewConfig() *Config {
-	return &Config{
-		OutputBufferTimeout: 250 * time.Millisecond,
-		MsgTimeout:          60 * time.Second,
-		ClientTimeout:       60 * time.Second,
+	c := &Config{
+        Base:qconfig.Config{
+            OutputBufferTimeout: 250 * time.Millisecond,
+            MsgTimeout:          60 * time.Second,
+            ClientTimeout:       60 * time.Second,
+            TcpAddress:          "127.0.0.1:8100",
+            MemQueueSize:        10000,
+        },
 		MaxMessageSize:      1024 * 1024,
 		MaxBodySize:         5 * 1024 * 1024,
-		MemQueueSize:        10000,
-		TCPAddress:          "127.0.0.1:8100",
 	}
+
+	qconfig.Q_Config = &c.Base
+
+	return c
 }
 
 var Q_Config *Config

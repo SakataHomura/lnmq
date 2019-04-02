@@ -33,14 +33,14 @@ type ConnectHandler interface {
 	CloseHandler()
 }
 
-func NewTcpServer(f func(*TcpConnect) ConnectHandler) *TcpServer {
+func NewTcpServer(f func(*TcpConnect) ConnectHandler, config qconfig.Config) *TcpServer {
 	s := &TcpServer{
 		HandlerCreator: f,
 		connectMgr:     &ConnectMgr{},
 	}
 
 	var err error
-	s.listener, err = net.Listen("tcp", qconfig.Q_Config.TCPAddress)
+	s.listener, err = net.Listen("tcp", config.TcpAddress)
 	if err != nil {
 
 	}
@@ -48,7 +48,7 @@ func NewTcpServer(f func(*TcpConnect) ConnectHandler) *TcpServer {
 	return s
 }
 
-func (server *TcpServer) Start() {
+func (server *TcpServer) Start(config qconfig.Config) {
 	for {
 		conn, err := server.listener.Accept()
 		if err != nil {
@@ -59,7 +59,7 @@ func (server *TcpServer) Start() {
 
 			break
 		} else {
-			c := server.createConnect(conn)
+			c := server.createConnect(conn, config)
 			c.connectMgr = server.connectMgr
 			server.connectMgr.AddConnect(c)
 
@@ -68,7 +68,7 @@ func (server *TcpServer) Start() {
 	}
 }
 
-func (server *TcpServer) createConnect(conn net.Conn) *TcpConnect {
+func (server *TcpServer) createConnect(conn net.Conn, config qconfig.Config) *TcpConnect {
 	addr, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 	id := atomic.AddUint64(&server.clientIdSequence, 1)
 	c := &TcpConnect{
@@ -78,13 +78,13 @@ func (server *TcpServer) createConnect(conn net.Conn) *TcpConnect {
 		Writer: bufio.NewWriterSize(conn, defaultBufferSize),
 
 		OutputBufferSize:    defaultBufferSize,
-		OutputBufferTimeout: qconfig.Q_Config.OutputBufferTimeout,
-		MsgTimeout:          qconfig.Q_Config.MsgTimeout,
+		OutputBufferTimeout: config.OutputBufferTimeout,
+		MsgTimeout:          config.MsgTimeout,
 
 		ClientId: addr,
 		Hostname: addr,
 
-		HeartbeatInterval: qconfig.Q_Config.ClientTimeout / 2,
+		HeartbeatInterval: config.ClientTimeout / 2,
 	}
 
 	c.ConnectHandler = server.HandlerCreator(c)

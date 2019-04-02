@@ -22,13 +22,13 @@ func NewServer() *Server {
 		topicMap: make(map[string]*qcore.Topic),
 	}
 
-	s.tcpServer = qnet.NewTcpServer(createTcpClient)
+	s.tcpServer = qnet.NewTcpServer(createTcpClient, Q_Config.Base)
 
 	return s
 }
 
 func (s *Server) Start() {
-	s.tcpServer.Start()
+	s.tcpServer.Start(Q_Config.Base)
 }
 
 func (s *Server) DeleteTopic(name string) {

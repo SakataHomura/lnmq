@@ -1,8 +1,7 @@
 package main
 
 import (
-	"github.com/lnmq/qconfig"
-	"github.com/lnmq/qmqd"
+    "github.com/lnmq/qmqd"
 )
 
 func main() {
@@ -13,5 +12,5 @@ func main() {
 }
 
 func initConfig() {
-	qconfig.Q_Config = qconfig.NewConfig()
+	qmqd.Q_Config = qmqd.NewConfig()
 }

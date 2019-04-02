@@ -1,14 +1,13 @@
 package qmqd
 
 import (
-	"github.com/lnmq/qauth"
-	"github.com/lnmq/qconfig"
-	"github.com/lnmq/qcore"
-	"github.com/lnmq/qnet"
-	"net"
-	"sync"
-	"sync/atomic"
-	"time"
+    "github.com/lnmq/qauth"
+    "github.com/lnmq/qcore"
+    "github.com/lnmq/qnet"
+    "net"
+    "sync"
+    "sync/atomic"
+    "time"
 )
 
 type TcpClient struct {
@@ -126,7 +125,7 @@ func (c *TcpClient) SetReadyCount(count int64) {
 }
 
 func (c *TcpClient) IsAuthEnabled() bool {
-	return len(qconfig.Q_Config.AuthHttpAddresses) != 0
+	return len(Q_Config.AuthHttpAddresses) != 0
 }
 
 func (c *TcpClient) HasAuth() bool {
@@ -171,9 +170,9 @@ func (c *TcpClient) QueryAuthd() error {
 		}
 	}
 
-	authState, err := qauth.QueryAnyAuthd(qconfig.Q_Config.AuthHttpAddresses,
+	authState, err := qauth.QueryAnyAuthd(Q_Config.AuthHttpAddresses,
 		remoteIp, tlsEnabled, commonName, c.AuthSecret,
-		qconfig.Q_Config.HttpClientConnectTimeout, qconfig.Q_Config.HttpClientRequestTimeout)
+		Q_Config.HttpClientConnectTimeout, Q_Config.HttpClientRequestTimeout)
 	if err != nil {
 		return err
 	}
