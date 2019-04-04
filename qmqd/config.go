@@ -15,6 +15,11 @@ type Config struct {
 	AuthHttpAddresses        []string
 	HttpClientConnectTimeout time.Duration
 	HttpClientRequestTimeout time.Duration
+
+    QueueScanSelectionCount int32
+    QueueScanInterval time.Duration
+    QueueRefreshInterval time.Duration
+    QueueScanDirtyPercent int32
 }
 
 func NewConfig() *Config {

@@ -87,6 +87,20 @@ func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {
 	return channel, nil
 }
 
+func (t *Topic) GetAllChannels() []*Channel {
+    ret := make([]*Channel, 0)
+
+    t.mutex.Lock()
+
+    for _, c := range t.channelMap {
+        ret = append(ret, c)
+    }
+
+    t.mutex.Unlock()
+
+    return ret
+}
+
 func (t *Topic) DeleteChannel(name string) {
 	t.mutex.Lock()
 	c, ok := t.channelMap[name]

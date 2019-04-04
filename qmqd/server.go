@@ -1,9 +1,11 @@
 package qmqd
 
 import (
-	"github.com/lnmq/qcore"
-	"github.com/lnmq/qnet"
-	"sync"
+    "github.com/lnmq/qcore"
+    "github.com/lnmq/qnet"
+    "github.com/lnmq/qutils"
+    "sync"
+    "time"
 )
 
 var Q_Server *Server
@@ -15,6 +17,8 @@ type Server struct {
 	tcpServer *qnet.TcpServer
 
 	rwMutex sync.RWMutex
+
+	updateChannelChan chan *qcore.Channel
 }
 
 func NewServer() *Server {
@@ -89,4 +93,90 @@ func (s *Server) GetChannel(topicName, chanName string) *qcore.Channel {
 	topic := s.GetTopic(topicName)
 
 	return topic.GetOrCreateChannel(chanName)
+}
+
+func (s *Server) GetAllChannel() []*qcore.Channel {
+    ret := make([]*qcore.Channel, 0)
+
+    s.rwMutex.RLock()
+
+    for _, t := range s.topicMap {
+        c := t.GetAllChannels()
+        ret = append(ret, c...)
+    }
+
+    s.rwMutex.RUnlock()
+
+    return ret
+}
+
+func (s *Server) queueLoop()  {
+    workCh := make(chan *qcore.Channel, Q_Config.QueueScanSelectionCount)
+    retCh := make(chan bool, Q_Config.QueueScanSelectionCount)
+
+    workTicker := time.NewTicker(Q_Config.QueueScanInterval)
+    refreshTicker := time.NewTicker(Q_Config.QueueRefreshInterval)
+
+    channels := s.GetAllChannel()
+
+    isBreak := false
+    for {
+        if isBreak {
+            break
+        }
+
+        select {
+        case <-workTicker.C:
+            if len(channels) == 0 {
+                continue
+            }
+        case <-refreshTicker.C:
+            newChans := make([]*qcore.Channel, 0, len(channels))
+            for _, ch := range channels {
+                if ch.Exiting() {
+                    continue
+                }
+
+                newChans = append(newChans, ch)
+            }
+            channels = newChans
+            continue
+        case c := <-s.updateChannelChan:
+            if !c.Exiting() {
+                channels = append(channels, c)
+            }
+            continue
+        }
+
+        num := int(Q_Config.QueueScanSelectionCount)
+        if num > len(channels) {
+            num = len(channels)
+        }
+
+        for  {
+            workNum := 0
+            for _, i := range qutils.UniqRands(num, len(channels))  {
+                if channels[i].Exiting() {
+                    continue
+                }
+
+                workCh <- channels[i]
+                workNum ++
+            }
+
+            dirty := 0
+            for i:=0; i<workNum; i++ {
+                if <- retCh {
+                    dirty ++
+                }
+            }
+
+            if int32(dirty * 100 / workNum) <= Q_Config.QueueScanDirtyPercent {
+                break
+            }
+        }
+    }
+
+    workTicker.Stop()
+    refreshTicker.Stop()
 }
