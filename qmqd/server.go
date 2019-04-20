@@ -92,7 +92,14 @@ func (s *Server) GetTopic(name string) *qcore.Topic {
 func (s *Server) GetChannel(topicName, chanName string) *qcore.Channel {
 	topic := s.GetTopic(topicName)
 
-	return topic.GetOrCreateChannel(chanName)
+	c, isNew := topic.GetOrCreateChannel(chanName)
+	if isNew {
+		select {
+		case s.updateChannelChan <- c:
+		}
+	}
+
+	return c
 }
 
 func (s *Server) GetAllChannel() []*qcore.Channel {

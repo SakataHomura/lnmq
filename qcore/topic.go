@@ -56,13 +56,13 @@ func (t *Topic) Exiting() bool {
 	return atomic.LoadInt32(&t.exitFlag) == 1
 }
 
-func (t *Topic) GetOrCreateChannel(name string) *Channel {
+func (t *Topic) GetOrCreateChannel(name string) (*Channel, bool) {
 	t.mutex.Lock()
 
 	c, ok := t.channelMap[name]
 	if ok {
 		t.mutex.Unlock()
-		return c
+		return c, false
 	}
 
 	c = NewChannel(t.Name, name, t)
@@ -72,7 +72,7 @@ func (t *Topic) GetOrCreateChannel(name string) *Channel {
 
 	atomic.StoreInt32(&t.isNeedUpdateChannel, 1)
 
-	return c
+	return c, true
 }
 
 func (t *Topic) GetExistingChannel(channelName string) (*Channel, error) {
@@ -244,6 +244,8 @@ func (t *Topic) exit(deleted bool) {
 		t.flush()
 		t.backend.Close()
 	}
+
+	return
 }
 
 func (t *Topic) Empty() {
